@@ -1,11 +1,5 @@
 # duplocloud-interview
 
-
-
-aws eks update-kubeconfig --region us-west-2 --name dev-eks-cluster
-
-
-
 # Deploying Terraform EKS Cluster with GitHub Actions
 
 This guide will walk you through setting up a Terraform project that deploys an Amazon EKS (Elastic Kubernetes Service) cluster using GitHub Actions. You'll learn how to fork the repository, configure AWS credentials, set up necessary AWS resources, and customize the deployment pipeline.
