@@ -28,10 +28,15 @@ fi
 
 # Create S3 bucket
 echo "Creating S3 bucket: $BUCKET_NAME in region: $REGION"
-aws s3api create-bucket \
-  --bucket "$BUCKET_NAME" \
-  --region "$REGION" \
-  --create-bucket-configuration LocationConstraint="$REGION"
+if [[ "$REGION" == "us-east-1" ]]; then
+  # For us-east-1, do not include the LocationConstraint parameter
+  aws s3api create-bucket --bucket "$BUCKET_NAME"
+else
+  aws s3api create-bucket \
+    --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --create-bucket-configuration LocationConstraint="$REGION"
+fi
 
 # Enable versioning on the S3 bucket
 echo "Enabling versioning on S3 bucket: $BUCKET_NAME"
