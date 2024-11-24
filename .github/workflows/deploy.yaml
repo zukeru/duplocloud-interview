@@ -80,11 +80,16 @@ jobs:
       - name: "Checkout code"
         uses: actions/checkout@v3
 
+      - name: "Set AWS Secrets for Environment"
+        run: |
+          echo "AWS_ACCESS_KEY_ID=${{ secrets['AWS_ACCESS_KEY_ID_' + inputs.environment | toUpper] }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets['AWS_SECRET_ACCESS_KEY_' + inputs.environment | toUpper] }}" >> $GITHUB_ENV
+
       - name: "Configure AWS credentials for ${{ env.TF_VAR_environment }} environment"
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          aws-access-key-id: ${{ secrets['AWS_ACCESS_KEY_ID_' + env.ENVIRONMENT | upper] }}
-          aws-secret-access-key: ${{ secrets['AWS_SECRET_ACCESS_KEY_' + env.ENVIRONMENT | upper] }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.TF_VAR_region }}
 
       - name: "Install Terraform"
