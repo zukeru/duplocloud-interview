@@ -97,6 +97,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y awscli
 
+      - name: "Check and Create S3 Bucket and DynamoDB Table"
+        run: |
+          # Extract bucket name and table name from the environment variables
+          BUCKET_NAME="${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}"
+          TABLE_NAME="${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}"
+          REGION="${{ env.TF_VAR_region }}"
+
+          echo "Checking if S3 bucket $BUCKET_NAME exists and DynamoDB table $TABLE_NAME exists..."
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null || ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" 2>/dev/null; then
+              echo "Either the S3 bucket $BUCKET_NAME or DynamoDB table $TABLE_NAME does not exist. Creating resources..."
+              ./create_state_resources.sh --bucket-name "$BUCKET_NAME" --table-name "$TABLE_NAME" --region "$REGION"
+          else
+              echo "Both S3 bucket $BUCKET_NAME and DynamoDB table $TABLE_NAME exist."
+          fi
+
       - name: "Replace variables in providers.tf"
         run: |
           sed -i "s|bucket *= *\"[^\"]*\"|bucket = \"${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
@@ -104,7 +119,7 @@ jobs:
           sed -i "s|region *= *\"[^\"]*\"|region = \"${{ env.TF_VAR_region }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
           sed -i "s|dynamodb_table *= *\"[^\"]*\"|dynamodb_table = \"${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
           cat ${{ env.TF_WORKING_DIR }}/providers.tf
-          
+
       - name: "Initialize Terraform"
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
