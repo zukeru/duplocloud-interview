@@ -2,5 +2,5 @@
 .terraform
 errored.tfstate
 .terraform.lock.hcl
-terraform/eks/*
+terraform/eks/.*
 terraform/eks/errored.tfstate
