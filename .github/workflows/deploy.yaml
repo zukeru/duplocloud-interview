@@ -74,7 +74,7 @@ jobs:
       TF_VAR_max_number_of_nodes: '${{ inputs.max_number_of_nodes }}'
       TF_VAR_min_number_of_nodes: '${{ inputs.min_number_of_nodes }}'
       TF_WORKING_DIR: "terraform/${{ inputs.terraform_application }}"
-      PROJECT_NAME: "${{ env.PROJECT_NAME }}"
+      PROJECT_NAME: "dupulo-cloud-interview"
 
     steps:
       - name: "Checkout code"
