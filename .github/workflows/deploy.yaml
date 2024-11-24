@@ -107,7 +107,7 @@ jobs:
           echo "Checking if S3 bucket $BUCKET_NAME exists and DynamoDB table $TABLE_NAME exists..."
           if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null || ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" 2>/dev/null; then
               echo "Either the S3 bucket $BUCKET_NAME or DynamoDB table $TABLE_NAME does not exist. Creating resources..."
-              ./create_state_resources.sh --bucket-name "$BUCKET_NAME" --table-name "$TABLE_NAME" --region "$REGION"
+              ./base_config_scripts/create_state_resources.sh --bucket-name "$BUCKET_NAME" --table-name "$TABLE_NAME" --region "$REGION"
           else
               echo "Both S3 bucket $BUCKET_NAME and DynamoDB table $TABLE_NAME exist."
           fi
