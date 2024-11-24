@@ -54,6 +54,12 @@ on:
         description: 'additional terraform arguments. ex. -lock=false'
         required: true
         default: ''
+      terraform_application:
+        description: 'Which infrastructure piece of terraform do you want to deploy.'
+        required: true
+        type: choice
+        options:
+          - eks
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -67,7 +73,7 @@ jobs:
       TF_VAR_number_of_nodes: '${{ inputs.number_of_nodes }}'
       TF_VAR_max_number_of_nodes: '${{ inputs.max_number_of_nodes }}'
       TF_VAR_min_number_of_nodes: '${{ inputs.min_number_of_nodes }}'
-      TF_WORKING_DIR: "terraform/eks"
+      TF_WORKING_DIR: "terraform/${{ inputs.terraform_application }}"
       PROJECT_NAME: "${{ env.PROJECT_NAME }}"
 
     steps:
