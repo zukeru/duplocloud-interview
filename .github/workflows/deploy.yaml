@@ -103,7 +103,8 @@ jobs:
           sed -i "s|key *= *\"[^\"]*\"|key = \"${{ env.TF_VAR_environment }}/terraform.tfstate\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
           sed -i "s|region *= *\"[^\"]*\"|region = \"${{ env.TF_VAR_region }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
           sed -i "s|dynamodb_table *= *\"[^\"]*\"|dynamodb_table = \"${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
-
+          cat ${{ env.TF_WORKING_DIR }}/providers.tf
+          
       - name: "Initialize Terraform"
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
