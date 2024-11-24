@@ -33,7 +33,7 @@ on:
         required: true
         type: choice
         options:
-          - 't3.medium'
+          - 'm5.large'
       number_of_nodes:
         description: 'Desired number of worker nodes'
         required: true
