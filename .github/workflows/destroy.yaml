@@ -1,4 +1,4 @@
-name: "DEPLOY:INFRASTRUCTURE"
+name: "DESTROY:INFRASTRUCTURE"
 
 on:
   workflow_dispatch:
