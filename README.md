@@ -1,20 +1,20 @@
 # duplocloud-interview
 
-# Deploying Terraform EKS Cluster with GitHub Actions and Manual Deployment
+# Deploying Terraform EKS Cluster with GitHub Actions
 
-This guide will walk you through setting up a Terraform project that deploys an Amazon EKS (Elastic Kubernetes Service) cluster using GitHub Actions and how to deploy it manually using Terraform commands. You'll learn how to fork the repository, configure AWS credentials, understand the pipeline, and run the deployment both automatically and manually.
+This guide will walk you through setting up a Terraform project that deploys an Amazon EKS (Elastic Kubernetes Service) cluster using GitHub Actions. You'll learn how to fork the repository, configure AWS credentials with environment-based secrets, set up GitHub Environments with approval processes for higher environments, understand the pipeline, and run the deployment.
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Fork the Repository](#fork-the-repository)
-- [Set Up AWS Credentials in GitHub Secrets](#set-up-aws-credentials-in-github-secrets)
+- [Set Up AWS Credentials and GitHub Environments](#set-up-aws-credentials-and-github-environments)
+  - [1. Generate AWS Access Keys for Each Environment](#1-generate-aws-access-keys-for-each-environment)
+  - [2. Add AWS Credentials to GitHub Secrets](#2-add-aws-credentials-to-github-secrets)
+  - [3. Configure GitHub Environments and Approvals](#3-configure-github-environments-and-approvals)
+  - [4. Update the Pipeline to Use Environment-Based Secrets](#4-update-the-pipeline-to-use-environment-based-secrets)
 - [Understanding the GitHub Actions Pipeline](#understanding-the-github-actions-pipeline)
 - [Running the Pipeline](#running-the-pipeline)
-- [Manual Deployment with Terraform](#manual-deployment-with-terraform)
-  - [Create State Resources](#create-state-resources)
-  - [Modify the `providers.tf` File](#modify-the-providerstf-file)
-  - [Run Terraform Commands Manually](#run-terraform-commands-manually)
 - [Summary](#summary)
 - [Troubleshooting](#troubleshooting)
 - [Resources](#resources)
@@ -54,35 +54,125 @@ Before you begin, ensure you have the following:
 
 ---
 
-## Set Up AWS Credentials in GitHub Secrets
+## Set Up AWS Credentials and GitHub Environments
 
-The GitHub Actions pipeline requires AWS credentials to interact with your AWS account. We'll store these credentials securely using GitHub Secrets.
+The GitHub Actions pipeline requires AWS credentials to interact with your AWS account. To enhance security and control, especially when deploying to different environments (`dev`, `qa`, `prod`), we'll store environment-specific AWS credentials securely using GitHub Secrets and configure GitHub Environments for approval workflows.
 
-1. **Generate AWS Access Keys**:
+### 1. Generate AWS Access Keys for Each Environment
 
-   - Log in to your AWS Management Console.
-   - Navigate to **IAM (Identity and Access Management)**.
-   - Create a new user with programmatic access.
-   - Assign the necessary permissions (e.g., `AdministratorAccess` for testing purposes).
-   - Download the **Access Key ID** and **Secret Access Key**.
+For each environment (`dev`, `qa`, `prod`), create separate AWS IAM users or roles with appropriate permissions.
 
-2. **Add AWS Credentials to GitHub Secrets**:
+#### **Create AWS IAM Users/Roles**
 
-   - Go to your forked repository on GitHub.
+- **For Dev Environment**:
+  - Create an IAM user or role with permissions limited to development resources.
+  - Generate an **Access Key ID** and **Secret Access Key** for this user.
+
+- **For QA Environment**:
+  - Create an IAM user or role with permissions for QA resources.
+  - Generate an **Access Key ID** and **Secret Access Key** for this user.
+
+- **For Prod Environment**:
+  - Create an IAM user or role with permissions for production resources.
+  - For enhanced security, consider using MFA and strict policies.
+  - Generate an **Access Key ID** and **Secret Access Key** for this user.
+
+### 2. Add AWS Credentials to GitHub Secrets
+
+We will store the AWS credentials for each environment in GitHub Secrets, namespaced by environment.
+
+1. **Go to Your Forked Repository on GitHub**:
+
    - Click on the **Settings** tab.
    - In the left sidebar, click on **Secrets and variables** > **Actions**.
-   - Click the **New repository secret** button.
 
-3. **Create AWS Secrets**:
+2. **Add Secrets for Each Environment**:
 
-   Add the following secrets:
+   - **For Dev Environment**:
+     - Click **New repository secret**.
+       - **Name**: `AWS_ACCESS_KEY_ID_DEV`
+       - **Value**: AWS Access Key ID for the Dev environment.
+     - Click **Add secret**.
+     - Repeat for the Secret Access Key:
+       - **Name**: `AWS_SECRET_ACCESS_KEY_DEV`
+       - **Value**: AWS Secret Access Key for the Dev environment.
 
-   - **AWS Access Key ID**:
-     - **Name**: `AWS_ACCESS_KEY_ID`
-     - **Value**: Your AWS Access Key ID
-   - **AWS Secret Access Key**:
-     - **Name**: `AWS_SECRET_ACCESS_KEY`
-     - **Value**: Your AWS Secret Access Key
+   - **For QA Environment**:
+     - Add secrets named `AWS_ACCESS_KEY_ID_QA` and `AWS_SECRET_ACCESS_KEY_QA` with the corresponding values.
+
+   - **For Prod Environment**:
+     - Add secrets named `AWS_ACCESS_KEY_ID_PROD` and `AWS_SECRET_ACCESS_KEY_PROD` with the corresponding values.
+
+### 3. Configure GitHub Environments and Approvals
+
+To add an approval process for higher environments like `prod`, we'll use GitHub Environments.
+
+#### **Create GitHub Environments**
+
+1. **Navigate to Repository Settings**:
+
+   - Go to the **Settings** tab of your repository.
+
+2. **Create Environments**:
+
+   - In the left sidebar, click on **Environments**.
+   - Click **New environment**.
+
+3. **Set Up Environment for Each Stage**:
+
+   - **Dev Environment**:
+     - **Environment Name**: `dev`
+     - No special configuration needed.
+
+   - **QA Environment**:
+     - **Environment Name**: `qa`
+     - No special configuration needed.
+
+   - **Prod Environment**:
+     - **Environment Name**: `prod`
+     - **Configure Required Reviewers**:
+       - After creating the `prod` environment, click on it to configure.
+       - Under **Deployment protection rules**, click **Required reviewers**.
+       - Add the users or teams who are authorized to approve deployments to `prod`.
+       - This ensures that any deployment to the `prod` environment requires manual approval.
+
+#### **Relate Environments to the Pipeline**
+
+In your GitHub Actions workflow, specify the `environment` for the job. This links the job to the GitHub Environment you've configured.
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    # ...
+```
+
+When you run the pipeline and select the environment from the dropdown, it will use the corresponding GitHub Environment configuration, including any required approvals.
+
+### 4. Update the Pipeline to Use Environment-Based Secrets
+
+Modify your GitHub Actions workflow to use the environment-specific AWS credentials based on the selected environment.
+
+In your workflow file (e.g., `.github/workflows/deploy-infrastructure.yml`), update the AWS credentials step:
+
+```yaml
+- name: "Configure AWS credentials for ${{ env.TF_VAR_environment }} environment"
+  uses: aws-actions/configure-aws-credentials@v1
+  with:
+    aws-access-key-id: ${{ secrets['AWS_ACCESS_KEY_ID_' + env.TF_VAR_environment | upper ] }}
+    aws-secret-access-key: ${{ secrets['AWS_SECRET_ACCESS_KEY_' + env.TF_VAR_environment | upper ] }}
+    aws-region: ${{ env.TF_VAR_region }}
+```
+
+**Explanation**:
+
+- We're dynamically accessing the secrets based on the `environment` variable.
+- The `env.TF_VAR_environment | upper` converts the environment name to uppercase to match the secret naming convention.
+
+---
+
+By setting up environment-based secrets and GitHub Environments with approval processes, you enhance the security and control of your deployment pipeline. This setup ensures that deployments to sensitive environments like `prod` require explicit approval from authorized personnel.
 
 ---
 
@@ -104,7 +194,7 @@ The pipeline is defined in the `.github/workflows` directory of your repository.
 - **Environment Variables**: The inputs are exported as environment variables prefixed with `TF_VAR_`, which Terraform automatically picks up.
 - **Pipeline Steps**:
   1. **Checkout Code**: Retrieves the repository code.
-  2. **Configure AWS Credentials**: Sets up AWS authentication using the secrets.
+  2. **Configure AWS Credentials**: Sets up AWS authentication using the environment-specific secrets.
   3. **Install Terraform**: Installs the required Terraform version.
   4. **Install AWS CLI**: Installs AWS CLI tools.
   5. **Check and Create S3 Bucket and DynamoDB Table**: Checks if the necessary S3 bucket and DynamoDB table exist; if not, it creates them using scripts.
@@ -115,9 +205,10 @@ The pipeline is defined in the `.github/workflows` directory of your repository.
 
 ### Key Points:
 
-- **AWS Credentials**: The pipeline uses the same AWS credentials for all environments, stored in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+- **Environment-Based AWS Credentials**: The pipeline uses environment-specific AWS credentials stored in secrets like `AWS_ACCESS_KEY_ID_DEV`, `AWS_ACCESS_KEY_ID_QA`, etc.
+- **GitHub Environments with Approvals**: Deployments to higher environments like `prod` require manual approval from designated reviewers.
 - **Automatic Resource Creation**: The pipeline automatically checks for and creates the S3 bucket and DynamoDB table needed for the Terraform backend.
-- **Simplified Secrets**: No need to create environment-specific AWS secrets; a single set suffices.
+- **Relating Environments to the Pipeline**: The `environment` input in the workflow dispatch corresponds to both the AWS credentials used and the GitHub Environment configuration.
 
 ---
 
@@ -149,180 +240,9 @@ The pipeline is defined in the `.github/workflows` directory of your repository.
 
    - The pipeline will start running.
    - Click on the running workflow to see real-time logs.
-   - The pipeline will:
-     - Automatically check and create the S3 bucket and DynamoDB table if they don't exist.
-     - Replace variables in `providers.tf` with the inputs provided.
-     - Initialize Terraform, plan, and apply the configuration.
-
----
-
-## Manual Deployment with Terraform
-
-If you prefer to deploy the infrastructure manually using Terraform commands, follow these steps.
-
-### Create State Resources
-
-The Terraform backend requires an S3 bucket for state storage and a DynamoDB table for state locking. These resources must be created before running Terraform.
-
-#### Using the Provided Script
-
-The repository includes scripts to create and delete the necessary AWS resources.
-
-1. **Navigate to the `base_config_scripts` Directory**:
-
-   ```bash
-   cd base_config_scripts
-   ```
-
-2. **Run the `create_state_resources.sh` Script**:
-
-   The script accepts the following parameters:
-
-   - `--bucket-name`: Name of the S3 bucket to create.
-   - `--table-name`: Name of the DynamoDB table to create.
-   - `--region`: AWS region where the resources will be created.
-
-   **Example**:
-
-   ```bash
-   ./create_state_resources.sh --bucket-name dupulo-cloud-interview-dev --table-name dupulo-cloud-interview-dev --region us-west-2
-   ```
-
-   This command will create:
-
-   - An S3 bucket named `dupulo-cloud-interview-dev`.
-   - A DynamoDB table named `dupulo-cloud-interview-dev`.
-   - Both in the `us-west-2` region.
-
-3. **Verify the Resources**:
-
-   - Log in to the AWS Management Console.
-   - Navigate to the **S3** service and confirm that the bucket exists.
-   - Navigate to the **DynamoDB** service and confirm that the table exists.
-
-### Modify the `providers.tf` File
-
-Before running Terraform commands, you need to configure the backend in the `providers.tf` file to use the S3 bucket and DynamoDB table you just created.
-
-1. **Open the `providers.tf` File**:
-
-   Located in the Terraform application directory, e.g., `terraform/eks/providers.tf`.
-
-2. **Update the Backend Configuration**:
-
-   Replace the existing content with the following, making sure to replace placeholders with your actual values:
-
-   ```hcl
-   terraform {
-     required_version = ">= 1.3.3"
-     backend "s3" {
-       bucket         = "dupulo-cloud-interview-dev"
-       key            = "dev/terraform.tfstate"
-       region         = "us-west-2"
-       dynamodb_table = "dupulo-cloud-interview-dev"
-       encrypt        = true
-     }
-   }
-
-   provider "aws" {
-     region = var.region
-   }
-
-   provider "kubernetes" {
-     host                   = module.eks.cluster_endpoint
-     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-     token                  = data.aws_eks_cluster_auth.cluster.token
-   }
-   ```
-
-   - **bucket**: Name of your S3 bucket.
-   - **key**: Path to the Terraform state file within the bucket.
-   - **region**: AWS region.
-   - **dynamodb_table**: Name of your DynamoDB table.
-
-3. **Save the Changes**.
-
-### Run Terraform Commands Manually
-
-Now that the backend is configured, you can proceed to run Terraform commands.
-
-1. **Navigate to the Terraform Directory**:
-
-   ```bash
-   cd ../terraform/eks
-   ```
-
-2. **Initialize Terraform**:
-
-   ```bash
-   terraform init
-   ```
-
-   - This command initializes the backend and downloads the necessary provider plugins.
-
-3. **Set Terraform Variables**:
-
-   You can set variables via command-line options, environment variables, or a `terraform.tfvars` file.
-
-   **Option 1: Using Environment Variables**
-
-   Set variables prefixed with `TF_VAR_`.
-
-   ```bash
-   export TF_VAR_region="us-west-2"
-   export TF_VAR_environment="dev"
-   export TF_VAR_vpc_cidr_block="10.0.0.0/16"
-   export TF_VAR_eks_cluster_name="dev-eks-cluster"
-   export TF_VAR_instance_type="m5.large"
-   export TF_VAR_number_of_nodes="1"
-   export TF_VAR_min_number_of_nodes="1"
-   export TF_VAR_max_number_of_nodes="10"
-   ```
-
-   **Option 2: Using a `terraform.tfvars` File**
-
-   Create a file named `terraform.tfvars` with the following content:
-
-   ```hcl
-   region            = "us-west-2"
-   environment       = "dev"
-   vpc_cidr_block    = "10.0.0.0/16"
-   eks_cluster_name  = "dev-eks-cluster"
-   instance_type     = "m5.large"
-   number_of_nodes   = 1
-   min_number_of_nodes = 1
-   max_number_of_nodes = 10
-   ```
-
-4. **Run Terraform Plan**:
-
-   ```bash
-   terraform plan -out=tfplan
-   ```
-
-   - This command creates an execution plan and saves it to `tfplan`.
-
-5. **Review the Plan**:
-
-   - Examine the output to ensure that the resources to be created match your expectations.
-
-6. **Apply the Plan**:
-
-   ```bash
-   terraform apply tfplan
-   ```
-
-   - This command applies the changes required to reach the desired state of the configuration.
-
-7. **Commit Changes (Optional)**:
-
-   If you made changes to the Terraform configuration files, commit them to your repository:
-
-   ```bash
-   git add .
-   git commit -m "Deployed EKS cluster manually"
-   git push origin main
-   ```
+   - If deploying to `prod`, the pipeline will pause and await approval from the designated reviewers.
+   - Approvers will receive a notification to review and approve the deployment.
+   - Once approved, the pipeline will proceed with the deployment.
 
 ---
 
@@ -331,10 +251,9 @@ Now that the backend is configured, you can proceed to run Terraform commands.
 You've now learned how to:
 
 - Use GitHub Actions to automate the deployment of an EKS cluster with Terraform.
-- Manually deploy the infrastructure using Terraform commands.
-- Create necessary AWS resources for Terraform state management using provided scripts.
-- Modify the `providers.tf` file to configure the Terraform backend.
-- Run Terraform commands to initialize, plan, and apply your infrastructure changes.
+- Set up environment-based AWS credentials and GitHub Environments with approval processes.
+- Modify the pipeline to use environment-specific secrets and approvals.
+- Run the pipeline with the environment dropdown relating to both AWS credentials and GitHub Environments.
 
 ---
 
@@ -342,28 +261,28 @@ You've now learned how to:
 
 - **AWS Credentials Errors**:
 
-  - Ensure that your AWS credentials are correctly configured in your local environment (`~/.aws/credentials`) or set as environment variables.
-  - Verify that the AWS credentials have the necessary permissions.
+  - Ensure that your AWS credentials are correctly added to GitHub Secrets with the correct naming convention (e.g., `AWS_ACCESS_KEY_ID_DEV`).
+  - Verify that the AWS credentials have the necessary permissions for their respective environments.
 
-- **S3 Bucket or DynamoDB Table Already Exists**:
+- **Approval Not Triggered for Prod Deployment**:
 
-  - If you receive errors about resources already existing, check if the bucket or table was previously created.
-  - Adjust the names to avoid conflicts or proceed if it's intentional.
+  - Check that the `prod` GitHub Environment is correctly configured with required reviewers.
+  - Ensure that the `environment` input in the workflow matches the GitHub Environment name.
 
-- **Terraform Initialization Errors**:
+- **Secrets Not Accessible in Pipeline**:
 
-  - Ensure that the `providers.tf` file is correctly configured.
-  - Verify network connectivity to AWS services.
+  - Confirm that the secrets are correctly named and that the syntax for accessing them in the workflow is correct.
+  - Remember that secret names are case-sensitive.
+
+- **Terraform State Backend Errors**:
+
+  - The pipeline automatically creates the S3 bucket and DynamoDB table if they don't exist.
+  - If errors occur, check the logs for the "Check and Create S3 Bucket and DynamoDB Table" step for details.
 
 - **Permission Denied Errors**:
 
-  - Make sure your IAM user or role has the necessary permissions for the actions you're performing.
-  - Check AWS policies attached to your IAM user or role.
-
-- **State Locking Errors**:
-
-  - If you encounter errors about the state being locked, ensure that no other Terraform process is running.
-  - You can manually unlock the state via DynamoDB if necessary.
+  - Ensure the AWS IAM users have the necessary permissions for the actions they're performing.
+  - Check AWS policies attached to your IAM users.
 
 ---
 
@@ -371,9 +290,8 @@ You've now learned how to:
 
 - **AWS Documentation**:
   - [Creating an IAM User in Your AWS Account](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_users_create.html)
+  - [IAM Best Practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
   - [Amazon EKS User Guide](https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html)
-  - [Amazon S3 Getting Started Guide](https://docs.aws.amazon.com/AmazonS3/latest/gsg/GetStartedWithS3.html)
-  - [Amazon DynamoDB Getting Started Guide](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GettingStartedDynamoDB.html)
 
 - **Terraform Documentation**:
   - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
@@ -381,8 +299,9 @@ You've now learned how to:
   - [Terraform CLI Commands](https://www.terraform.io/cli/commands)
 
 - **GitHub Actions Documentation**:
-  - [GitHub Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+  - [Encrypted Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
   - [GitHub Environments](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
+  - [Approval Workflows](https://docs.github.com/en/actions/managing-workflow-runs/requiring-approval-for-workflows)
 
 ---
 
@@ -392,121 +311,140 @@ Feel free to customize and extend this guide based on your specific requirements
 
 # Appendix
 
-## `providers.tf` File Example
+## Updated Workflow File (`.github/workflows/deploy-infrastructure.yml`)
 
-Here is an example of how your `providers.tf` file should look after modification:
+```yaml
+name: "DEPLOY:INFRASTRUCTURE"
 
-```hcl
-terraform {
-  required_version = ">= 1.3.3"
-  backend "s3" {
-    bucket         = "dupulo-cloud-interview-dev"
-    key            = "dev/terraform.tfstate"
-    region         = "us-west-2"
-    dynamodb_table = "dupulo-cloud-interview-dev"
-    encrypt        = true
-  }
-}
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Select region'
+        required: true
+        type: choice
+        options:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+          - ap-southeast-1
+          - ap-southeast-2
+      environment:
+        description: 'Select environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+      eks_cluster_name:
+        description: 'EKS Cluster Name'
+        required: true
+        default: 'dev-eks-cluster'
+      instance_type:
+        description: 'Instance Type'
+        required: true
+        default: 'm5.large'
+      number_of_nodes:
+        description: 'Desired number of worker nodes'
+        required: true
+        default: '1'
+      min_number_of_nodes:
+        description: 'Minimum number of worker nodes'
+        required: true
+        default: '1'
+      max_number_of_nodes:
+        description: 'Maximum number of worker nodes'
+        required: true
+        default: '10'
+      vpc_cidr_block:
+        description: 'The VPC CIDR block'
+        required: true
+        default: '10.0.0.0/16'
+      terraform_xargs:
+        description: 'Additional Terraform arguments. ex. -lock=false'
+        required: false
+        default: ''
+      terraform_application:
+        description: 'Which infrastructure piece of Terraform do you want to deploy.'
+        required: true
+        default: 'eks'
 
-provider "aws" {
-  region = var.region
-}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      TF_VAR_environment: '${{ inputs.environment }}'
+      TF_VAR_region: '${{ inputs.region }}'
+      TF_VAR_vpc_cidr_block: '${{ inputs.vpc_cidr_block }}'
+      TF_VAR_eks_cluster_name: '${{ inputs.eks_cluster_name }}'
+      TF_VAR_instance_type: '${{ inputs.instance_type }}'
+      TF_VAR_number_of_nodes: '${{ inputs.number_of_nodes }}'
+      TF_VAR_max_number_of_nodes: '${{ inputs.max_number_of_nodes }}'
+      TF_VAR_min_number_of_nodes: '${{ inputs.min_number_of_nodes }}'
+      TF_WORKING_DIR: "terraform/${{ inputs.terraform_application }}"
+      PROJECT_NAME: "dupulo-cloud-interview"
 
-provider "kubernetes" {
-  host                   = module.eks.cluster_endpoint
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
-}
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v3
+
+      - name: "Configure AWS credentials for ${{ env.TF_VAR_environment }} environment"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets['AWS_ACCESS_KEY_ID_' + env.TF_VAR_environment | upper ] }}
+          aws-secret-access-key: ${{ secrets['AWS_SECRET_ACCESS_KEY_' + env.TF_VAR_environment | upper ] }}
+          aws-region: ${{ env.TF_VAR_region }}
+
+      - name: "Install Terraform"
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.3.3
+
+      - name: "Install AWS CLI"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      - name: "Check and Create S3 Bucket and DynamoDB Table"
+        run: |
+          BUCKET_NAME="${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}"
+          TABLE_NAME="${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}"
+          REGION="${{ env.TF_VAR_region }}"
+
+          echo "Checking if S3 bucket $BUCKET_NAME exists and DynamoDB table $TABLE_NAME exists..."
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null || ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" 2>/dev/null; then
+              echo "Either the S3 bucket $BUCKET_NAME or DynamoDB table $TABLE_NAME does not exist. Creating resources..."
+              ./base_config_scripts/create_state_resources.sh --bucket-name "$BUCKET_NAME" --table-name "$TABLE_NAME" --region "$REGION"
+          else
+              echo "Both S3 bucket $BUCKET_NAME and DynamoDB table $TABLE_NAME exist."
+          fi
+
+      - name: "Replace variables in providers.tf"
+        run: |
+          sed -i "s|bucket *= *\"[^\"]*\"|bucket = \"${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
+          sed -i "s|key *= *\"[^\"]*\"|key = \"${{ env.TF_VAR_environment }}/terraform.tfstate\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
+          sed -i "s|region *= *\"[^\"]*\"|region = \"${{ env.TF_VAR_region }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
+          sed -i "s|dynamodb_table *= *\"[^\"]*\"|dynamodb_table = \"${{ env.PROJECT_NAME }}-${{ env.TF_VAR_environment }}\"|" ${{ env.TF_WORKING_DIR }}/providers.tf
+          cat ${{ env.TF_WORKING_DIR }}/providers.tf
+
+      - name: "Initialize Terraform"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: "Terraform Plan"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform plan -out=tfplan
+
+      - name: "Terraform Apply"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan ${{ inputs.terraform_xargs }}
 ```
 
 ---
 
-## Scripts for State Resources Management
-
-### Create State Resources Script (`create_state_resources.sh`)
-
-```bash
-#!/bin/bash
-
-set -e
-
-usage() {
-  echo "Usage: $0 --bucket-name <bucket_name> --table-name <table_name> --region <region>"
-  exit 1
-}
-
-while [[ "$#" -gt 0 ]]; do
-  case $1 in
-    --bucket-name) BUCKET_NAME="$2"; shift ;;
-    --table-name) TABLE_NAME="$2"; shift ;;
-    --region) REGION="$2"; shift ;;
-    *) usage ;;
-  esac
-  shift
-done
-
-if [[ -z "$BUCKET_NAME" || -z "$TABLE_NAME" || -z "$REGION" ]]; then
-  usage
-fi
-
-echo "Creating S3 bucket: $BUCKET_NAME"
-aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION"
-
-echo "Enabling versioning on S3 bucket: $BUCKET_NAME"
-aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" --versioning-configuration Status=Enabled
-
-echo "Creating DynamoDB table: $TABLE_NAME"
-aws dynamodb create-table \
-  --table-name "$TABLE_NAME" \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region "$REGION"
-
-echo "State resources created successfully."
-```
-
-### Delete State Resources Script (`delete_state_resources.sh`)
-
-```bash
-#!/bin/bash
-
-set -e
-
-usage() {
-  echo "Usage: $0 --bucket-name <bucket_name> --table-name <table_name> --region <region>"
-  exit 1
-}
-
-while [[ "$#" -gt 0 ]]; do
-  case $1 in
-    --bucket-name) BUCKET_NAME="$2"; shift ;;
-    --table-name) TABLE_NAME="$2"; shift ;;
-    --region) REGION="$2"; shift ;;
-    *) usage ;;
-  esac
-  shift
-done
-
-if [[ -z "$BUCKET_NAME" || -z "$TABLE_NAME" || -z "$REGION" ]]; then
-  usage
-fi
-
-echo "Deleting all objects from S3 bucket: $BUCKET_NAME"
-aws s3api delete-objects --bucket "$BUCKET_NAME" --delete "$(aws s3api list-object-versions --bucket "$BUCKET_NAME" --output=json --query='{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"
-
-echo "Deleting S3 bucket: $BUCKET_NAME"
-aws s3api delete-bucket --bucket "$BUCKET_NAME" --region "$REGION"
-
-echo "Deleting DynamoDB table: $TABLE_NAME"
-aws dynamodb delete-table --table-name "$TABLE_NAME" --region "$REGION"
-
-echo "State resources deleted successfully."
-```
-
----
-
-# Service Checks Pipeline `.github/workflows/service_checks.yaml`
+## Service Checks Pipeline `.github/workflows/service_checks.yaml`
 
 This GitHub Actions pipeline is designed to monitor the availability of specific service endpoints. If any of the endpoints return a status code other than `200 OK`, the pipeline will fail and send a notification to a designated Slack channel.
 
@@ -561,4 +499,3 @@ This GitHub Actions pipeline is designed to monitor the availability of specific
 This pipeline is a simple yet powerful way to automate service availability monitoring, ensuring your team stays informed of any potential issues in real-time.
 
 ---
-
