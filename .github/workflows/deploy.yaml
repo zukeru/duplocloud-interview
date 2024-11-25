@@ -130,4 +130,4 @@ jobs:
 
       - name: "Terraform Apply"
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve tfplan ${{ inputs.terraform_xargs }}
+        run: terraform apply -auto-approve ${{ inputs.terraform_xargs }} tfplan 
