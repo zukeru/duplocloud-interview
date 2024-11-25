@@ -14,6 +14,13 @@ on:
           - eu-west-1
           - ap-southeast-1
           - ap-southeast-2
+      terraform_action:
+        description: 'Select action.'
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
       environment:
         description: 'Select environment'
         required: true
@@ -129,5 +136,11 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: "Terraform Apply"
+        if: ${{ inputs.terraform_action == 'apply' }}
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve ${{ inputs.terraform_xargs }} tfplan 
+        run: terraform apply -auto-approve ${{ inputs.terraform_xargs }} tfplan
+
+      - name: "Terraform Destroy"
+        if: ${{ inputs.terraform_action == 'destroy' }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform destroy -auto-approve ${{ inputs.terraform_xargs }}
